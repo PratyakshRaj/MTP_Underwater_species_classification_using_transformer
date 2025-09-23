@@ -5,9 +5,9 @@ from torch.utils.data import DataLoader
 import torch.optim as optim
 from data_loading import AudioFeatureDataset
 from model_building import CNNTransformerModel
-
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 from torch.nn.utils.rnn import pad_sequence
-
+import os
 from torch.nn.utils.rnn import pad_sequence
 import torch
 
@@ -38,7 +38,7 @@ def collate_fn(batch):
 
 
 class trainer:
-    def __init__(self,path_spec_folder,path_mfcc_folder,label_map_path,d_mfcc_features, d_model, num_classes, train_subset=None, val_subset=None):
+    def __init__(self,path_spec_folder,path_mfcc_folder,label_map_path,d_mfcc_features, d_model, num_classes, fold,train_subset=None, val_subset=None):
         with open(label_map_path, "r") as f:
             self.label_map = json.load(f)
 
@@ -62,7 +62,7 @@ class trainer:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         # d_mfcc_features=36, d_model=512, num_classes=55
         self.model = CNNTransformerModel(d_mfcc_features, d_model, num_classes).to(self.device)
-
+        self.fold=fold
         self.criterion = torch.nn.CrossEntropyLoss()
         self.optimizer = optim.Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr=1e-4)
 
@@ -89,13 +89,13 @@ class trainer:
             print(f"Epoch {epoch+1}: Loss = {total_loss/len(self.train_loader):.4f}")
              
             # ---- Evaluate both train and validation ----
-        train_acc = self.evaluate_loader(self.train_loader, name="Train")
+        train_acc = self.evaluate_loader(self.train_loader, name="Train",base_dir="train_val_results")
         if self.val_loader:
-            val_acc = self.evaluate_loader(self.val_loader, name="Val")            
+            val_acc = self.evaluate_loader(self.val_loader, name="Val",base_dir="train_val_results")            
     
         return self.model  
 
-    def evaluate(self,loader,name="Val"):
+    def evaluate_loader(self,loader,name="Val",base_dir="train_val_results"):
         self.model.eval()
         total_loss, correct, total = 0, 0, 0
         all_preds, all_labels = [], []
@@ -110,21 +110,39 @@ class trainer:
                 total_loss += loss.item()
 
                 preds = outputs.argmax(dim=1)
-                correct += (preds == labels).sum().item()
-                total += labels.size(0)
-
+              
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
 
-        acc = correct / total
-        print(f"{name} Loss = {total_loss/len(loader):.4f}, {name} Acc = {acc:.4f}")
+        acc = accuracy_score(all_labels, all_preds)
+        f1 = f1_score(all_labels, all_preds, average="macro")
+        avg_loss = total_loss / len(loader)
+
+        print(f"{name} Loss = {avg_loss:.4f}, {name} Acc = {acc:.4f}, {name} F1 = {f1:.4f}")
+
+        results = {
+                "name": name,
+                "loss": avg_loss,
+                "accuracy": acc,
+                "f1": f1
+            }
 
         if name == "Val":  # confusion matrix only for validation
-            from sklearn.metrics import confusion_matrix
-            cm = confusion_matrix(all_labels, all_preds)
-            print("Validation Confusion Matrix:\n", cm)
+          
+            cm = confusion_matrix(all_labels, all_preds).tolist()
+            results["confusion_matrix"] = cm
+            print(f"[Fold {self.fold}] Validation Confusion Matrix:\n", cm)
+        
+        
+        fold_dir = os.path.join(base_dir, f"fold_{self.fold}")
+        os.makedirs(fold_dir, exist_ok=True)
+        
+        save_file = os.path.join(fold_dir, f"{name.lower()}.json")
 
-        return acc
+        with open(save_file, "a") as f:  # append mode so we don’t overwrite previous results
+            f.write(json.dumps(results) + "\n")    
+
+        
 
 
 
