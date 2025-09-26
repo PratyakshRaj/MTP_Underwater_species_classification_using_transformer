@@ -31,7 +31,7 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(dataset)):
         
         train_ins = trainer("features/spectrogram","features/mfcc","label_map.json",36,512,55,fold+1,train_subset=train_subset, val_subset=val_subset)
 
-        trained_model=train_ins.train(epochs=1)
+        trained_model=train_ins.train(epochs=25)
 
         model_path = f"model_fold{fold+1}.pth"
         torch.save(trained_model.state_dict(), model_path)
