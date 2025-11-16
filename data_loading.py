@@ -64,8 +64,17 @@ class AudioFeatureDataset(Dataset):
         fname = os.path.join(species, audio)
 
         # load features
-        spec = np.load(os.path.join(self.spec_root, fname.replace(".wav", "_mel.npy")))
-        mfcc = np.load(os.path.join(self.mfcc_root, fname.replace(".wav", "_mfcc.npy")))
+        spec_path = os.path.join(self.spec_root, fname.replace(".wav", "_mel.npy"))
+        mfcc_path = os.path.join(self.mfcc_root, fname.replace(".wav", "_mfcc.npy"))
+
+        if not os.path.exists(spec_path) or not os.path.exists(mfcc_path):
+            print("Skipping missing:", spec_path, mfcc_path)
+            return None  # <<<< return None safely
+
+        # NOW load
+        spec = np.load(spec_path)
+        mfcc = np.load(mfcc_path)
+
 
         # ensure proper shape
         spec = self.crop_pad(spec)

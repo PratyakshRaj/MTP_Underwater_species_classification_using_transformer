@@ -12,6 +12,12 @@ from torch.nn.utils.rnn import pad_sequence
 import torch
 
 def collate_fn(batch):
+    
+    batch = [b for b in batch if b is not None]
+
+    if len(batch) == 0:
+        return None
+
     specs, mfccs, labels = zip(*batch)
 
     # ---- Spectrogram ----
@@ -70,7 +76,10 @@ class trainer:
         for epoch in range(epochs):
             self.model.train()
             total_loss = 0
-            for batch_idx,(spec, mfcc, labels, spec_mask, mfcc_mask) in enumerate(self.train_loader):
+            for batch_idx,batch in enumerate(self.train_loader):
+                if batch is None:     # ← skip empty batches
+                    continue
+                spec, mfcc, labels, spec_mask, mfcc_mask = batch
                 spec, mfcc, labels = spec.to(self.device), mfcc.to(self.device), labels.to(self.device)
                 spec_mask, mfcc_mask = spec_mask.to(self.device), mfcc_mask.to(self.device)
 
@@ -89,19 +98,22 @@ class trainer:
             print(f"Epoch {epoch+1}: Loss = {total_loss/len(self.train_loader):.4f}")
              
             # ---- Evaluate both train and validation ----
-        train_acc = self.evaluate_loader(self.train_loader, name="Train",base_dir="train_val_results")
+        train_acc = self.evaluate_loader(self.train_loader, name="Train",base_dir="new_train_val_results")
         if self.val_loader:
-            val_acc = self.evaluate_loader(self.val_loader, name="Val",base_dir="train_val_results")            
+            val_acc = self.evaluate_loader(self.val_loader, name="Val",base_dir="new_train_val_results")            
     
         return self.model  
 
-    def evaluate_loader(self,loader,name="Val",base_dir="train_val_results"):
+    def evaluate_loader(self,loader,name="Val",base_dir="new_train_val_results"):
         self.model.eval()
         total_loss, correct, total = 0, 0, 0
         all_preds, all_labels = [], []
 
         with torch.no_grad():
-            for spec, mfcc, labels, spec_mask, mfcc_mask in loader:
+            for batch in loader:
+                if batch is None:
+                    continue
+                spec, mfcc, labels, spec_mask, mfcc_mask = batch
                 spec, mfcc, labels = spec.to(self.device), mfcc.to(self.device), labels.to(self.device)
                 spec_mask, mfcc_mask = spec_mask.to(self.device), mfcc_mask.to(self.device)
 
